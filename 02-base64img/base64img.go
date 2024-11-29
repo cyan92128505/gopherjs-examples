@@ -7,69 +7,74 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"math/rand"
-	"time"
-
+	"strconv"
+	"strings"
 	"github.com/gopherjs/gopherjs/js"
 )
 
-func init() {
-	rand.Seed(time.Now().UTC().UnixNano())
+// Convert hex color string to RGBA color
+func hexToColor(hex string) (color.NRGBA, error) {
+    // Remove '#' if present
+    hex = strings.TrimPrefix(hex, "#")
+    
+    // Parse hex string to RGB values
+    rgb, err := strconv.ParseUint(hex, 16, 32)
+    if err != nil {
+        return color.NRGBA{}, err
+    }
+    
+    return color.NRGBA{
+        R: uint8(rgb >> 16),
+        G: uint8((rgb >> 8) & 0xFF),
+        B: uint8(rgb & 0xFF),
+        A: 255,
+    }, nil
 }
 
-func randomColor() color.NRGBA {
-	return color.NRGBA{uint8(rand.Intn(255)), uint8(rand.Intn(255)), uint8(rand.Intn(255)), 255}
-}
-
-func base64img(width, height, blocks int) string {
-	var cellsizex int = width / blocks
-	var cellsizey int = height / blocks
-
-	colors := make([][]color.NRGBA, blocks)
-	for i, _ := range colors {
-		colors[i] = make([]color.NRGBA, blocks)
-		for j := 0; j < blocks; j++ {
-			colors[i][j] = randomColor()
-		}
-	}
-
-	// 32 x 4  (2)
-	// cellsizex 16
-	// cellsizey 2
-	// color[16][2]
-
-	m := image.NewNRGBA(image.Rectangle{Min: image.Point{0, 0}, Max: image.Point{width, height}})
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			var xx int = x / cellsizex
-			var yy int = y / cellsizey
-			// fmt.Println(x, y, xx, yy)
-			var c = colors[xx][yy]
-			m.SetNRGBA(x, y, c)
-		}
-	}
-
-	buf := bytes.NewBuffer([]byte{})
-	if err := png.Encode(buf, m); err != nil {
-		fmt.Println(err)
-	}
-	b64str := base64.StdEncoding.EncodeToString(buf.Bytes())
-	return b64str
+// Generate base64 encoded image with single color
+func base64img(width, height int, hexColor string) string {
+    // Create new image
+    m := image.NewNRGBA(image.Rectangle{
+        Min: image.Point{0, 0},
+        Max: image.Point{width, height},
+    })
+    
+    // Convert hex to color
+    c, err := hexToColor(hexColor)
+    if err != nil {
+        // Fall back to black if invalid hex
+        c = color.NRGBA{0, 0, 0, 255}
+    }
+    
+    // Fill image with single color
+    for y := 0; y < height; y++ {
+        for x := 0; x < width; x++ {
+            m.SetNRGBA(x, y, c)
+        }
+    }
+    
+    // Encode to PNG
+    buf := bytes.NewBuffer([]byte{})
+    if err := png.Encode(buf, m); err != nil {
+        fmt.Println(err)
+    }
+    
+    // Convert to base64
+    return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
 func main() {
-
-	if js.Global != nil {
-		// running from a browser
-		js.Global.Set("gopkg", map[string]interface{}{
-			"base64img": base64img,
-		})
-	} else {
-		width := 32
-		height := 4
-		blocks := 4
-		b64str := base64img(width, height, blocks)
-		fmt.Println(b64str)
-	}
-
+    if js.Global != nil {
+        // Running from browser
+        js.Global.Set("gopkg", map[string]interface{}{
+            "base64img": base64img,
+        })
+    } else {
+        // Test run
+        width := 32
+        height := 4
+        hexColor := "FF0000" // Red color
+        b64str := base64img(width, height, hexColor)
+        fmt.Println(b64str)
+    }
 }
